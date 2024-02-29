@@ -9,6 +9,7 @@ const connectDB = async () => {
     console.log(
       `DATABASE Connection succesfull !! DB_HOST:${connectionInstances.connection.host}`
     );
+    console.log("this is to read ->" + connectionInstances)
   } catch (error) {
     console.log(`Error in Connectin DataBase: + ${error}`);
     process.exit(1);
