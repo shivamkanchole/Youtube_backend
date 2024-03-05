@@ -18,7 +18,7 @@ const userschema = new mongoose.Schema(
       trim: true,
       index: true,
     },
-    emial: {
+    email: {
       type: String,
       required: true,
     },
@@ -30,9 +30,8 @@ const userschema = new mongoose.Schema(
       type: String, // we are using cloudnary url
       required: true,
     },
-    coverimage: {
-      type: String, // from cloundnary url
-      required: true,
+    coverImage: {
+      type: String // from cloundnary url
     },
     watchHistory: [
       {
@@ -42,7 +41,7 @@ const userschema = new mongoose.Schema(
       },
     ],
     refreshToken: {
-      type: String,
+      type: String
     },
   },
   { timestamps: true }
@@ -53,7 +52,7 @@ const userschema = new mongoose.Schema(
 userschema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
 
-  this.password = bcrypt.hash(this.password, 10);
+  this.password = await bcrypt.hash(this.password, 10);
   next();
 });
 
@@ -65,31 +64,31 @@ userschema.methods.isPasswordCorrect = async function (password) {
 
 // now we are genrating access tokens
 userschema.methods.generateAccessToken = function () {
-  // Jwt.sign({payload},accesstoken,{expirytoken}) // this is a syntex for generating tokens
-  Jwt.sign(
-    {
+  // Jwt.sign({payload},accesstoken,{expiryaccesstoken}) // this is a syntex for generating tokens
+   return Jwt.sign(
+   {
     _id: this._id, // here id(everything) is coming from database,
-    emial: this.emial,
+    email: this.email,
     username: this.username,
-    FullName: this.FullName,
+    FullName: this.FullName
    },
    process.env.ACCESS_TOKEN_SECRET,
    {
-     expiredin : process.env.ACCESS_TOKEN_EXPIRY
+    expiresIn : process.env.ACCESS_TOKEN_EXPIRY
    }
   );
 };
 
 // now we are genrating refresh token
 userschema.methods.generateRefreshToken = function () {
-    // Jwt.sign({payload},accesstoken,{expirytoken}) // this is a syntex for generating tokens
-    Jwt.sign(
-      {
-      _id: this._id, // here payload has less information
+    // Jwt.sign({payload},refreshtoken,{expiryrefreshtoken}) // this is a syntex for generating tokens
+    return Jwt.sign(
+     {
+      _id: this._id // here payload has less information
      },
      process.env.REFRESH_TOKEN_SECRET,
      {
-       expiredin : process.env.REFRESH_TOKEN_EXPIRY
+      expiresIn : process.env.REFRESH_TOKEN_EXPIRY
      }
     );
   };
