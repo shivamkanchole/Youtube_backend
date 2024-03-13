@@ -8,7 +8,7 @@ const videoSchema = new Schema(
     require:true,
     index:true
    },
-   thumbnail:{
+   thumbnail:{ // from cloudnary url
     type:String,
     require:true,
    },

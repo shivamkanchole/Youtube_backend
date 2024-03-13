@@ -4,6 +4,7 @@ import { User } from "../models/User.model.js";
 import { UploadOnCloudinary } from "../utils/Cloudinary.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import Jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const registerUser = asyncHandler(async (req, res) => {
   console.log("Request received at register function");
@@ -19,6 +20,7 @@ const registerUser = asyncHandler(async (req, res) => {
   // return res
 
   const { username, FullName, email, password } = req.body;
+  // console.log(username);
 
   if (
     [username, FullName, email, password].some((field) => field?.trim() === "") // it return true if feild is empty, some method only returns true or false
@@ -33,8 +35,11 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(409, "User with email|username is already existed");
   }
 
+  console.log("user not registered");
+
   //multer hme files ka access deta hai , basically multer req me hi or feilds ko add kr deta hai
   const avtarLoacalPath = req.files?.avatar[0]?.path;
+  console.log("hereok");
   // const coverImageLocalPath = req.files?.coverImage[0]?.path; // this is a advance way to check
   let coverImageLocalPath;
   if (
@@ -48,12 +53,13 @@ const registerUser = asyncHandler(async (req, res) => {
   if (!avtarLoacalPath) {
     throw new ApiError(400, "Avatar is required field");
   }
-
+  console.log("uploadinf on cloudninay");
   const avatar = await UploadOnCloudinary(avtarLoacalPath); // we get object
   const coverImage = await UploadOnCloudinary(coverImageLocalPath);
   if (!avatar) {
     throw new ApiError(400, "Avatar is required field");
   }
+  console.log("uploaded on cloudninay");
 
   const user = await User.create({
     FullName,
@@ -72,7 +78,7 @@ const registerUser = asyncHandler(async (req, res) => {
   if (!createduser) {
     throw new ApiError(500, "Something went wrong while Registering a user");
   }
-
+  console.log("we are sending data now");
   return res
     .status(201)
     .json(new apiResponse(200, createduser, "User Created Successfully"));
@@ -85,9 +91,7 @@ const GenerateAccessAndRefreshTokens = async (userid) => {
     const refreshtoken = user.generateRefreshToken();
 
     user.refreshToken = refreshtoken;
-    console.log("user before adding refresh token- ", user);
     await user.save({ validateBeforeSave: false });
-    console.log("user after adding refresh token-", user);
 
     return { accesstoken, refreshtoken };
   } catch (error) {
@@ -163,8 +167,8 @@ const LogOutUser = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(
     req.user?._id, // query jisse user ko find krna hai
     {
-      $set: {
-        refreshToken: undefined, // data that we need to update
+      $unset: {
+        refreshToken: 1, // data that we need to update
       },
     },
     {
@@ -187,7 +191,8 @@ const LogOutUser = asyncHandler(async (req, res) => {
 const RefreshAccessToken = asyncHandler(async (req, res) => {
   // extract the refrsh token from body or cookies
   const incomingRefreshToken =
-    req.cookies.refreshToken || req.body.refreshToken;
+    req.cookies?.refreshtoken || req.body.refreshToken;
+
   if (!incomingRefreshToken) {
     throw new ApiError(401, "Unauthorised Request");
   }
@@ -198,7 +203,7 @@ const RefreshAccessToken = asyncHandler(async (req, res) => {
       incomingRefreshToken,
       process.env.ACCESS_TOKEN_SECRET
     );
-
+    // console.log("This is Decoded Refresh Token-",decodedToken)
     const user = await User.findById(decodedToken?._id);
     if (!user) {
       throw new ApiError(401, "Invalid Refreshtoken");
@@ -221,16 +226,268 @@ const RefreshAccessToken = asyncHandler(async (req, res) => {
       .cookie("accesstoken", accesstoken, options)
       .cookie("refreshtoken", newrefreshtoken, options)
       .json(
-        200,
-        {
-          accesstoken,
-          newrefreshtoken,
-        },
-        "Refresh Token Refreshed Successfully"
+        new apiResponse(
+          200,
+          {
+            accesstoken,
+            newrefreshtoken,
+          },
+          "Refresh Token Refreshed Successfully"
+        )
       );
   } catch (error) {
-    throw new ApiError(401,"Invalid refrsh token")
+    throw new ApiError(401, "Invalid Refresh Token");
   }
 });
 
-export { registerUser, loginUser, LogOutUser, RefreshAccessToken };
+const ChangeCurrentPassword = asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  const user = await User.findById(req.user?._id);
+
+  const isPasswordCorrect = user.isPasswordCorrect(oldPassword);
+  if (!isPasswordCorrect) {
+    return new ApiError(401, "Invalid old Password");
+  }
+
+  user.password = newPassword;
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new apiResponse(200, {}, "Password Changed Successfully"));
+});
+
+const getCurrentUser = asyncHandler(async (req, res) => {
+  return res
+    .status(200)
+    .json(new apiResponse(200, req.user, "Current user Fetched"));
+});
+
+const updateCurrentUserDetails = asyncHandler(async (req, res) => {
+  const { FullName, email } = req.body
+  // console.log(FullName);
+
+  if (!(FullName && email)) {
+    throw new ApiError(401, "All fields are required");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        FullName,
+        email,
+      },
+    },
+    {
+      new: true,
+    }
+  ).select("-password");
+
+  return res
+    .status(200)
+    .json(new apiResponse(200, user, "User Details Updated Successfully"));
+});
+
+const updateCurrentUserAvatar = asyncHandler(async (req, res) => {
+  const avatarLocalPath = req.file?.path;
+  if (!avatarLocalPath) {
+    throw new ApiError(401, "Local Fill Missing");
+  }
+  // console.log("File uploded locally")
+  const avatar = await UploadOnCloudinary(avatarLocalPath);
+  if (!avatar) {
+    throw new ApiError(500, "avatar is not uploaded on Cloudinary");
+  }
+  // console.log("file uploaded on cloudinary")
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        avatar: avatar.url,
+      },
+    },
+    {
+      new: true,
+    }
+  ).select("-password");
+
+  // TODO - we need to delete the file which is locally present in our public files...
+
+  return res
+    .status(200)
+    .json(new apiResponse(200, user, "Avatar Updated Successfully"));
+});
+
+const updateCurrentUserCoverImage = asyncHandler(async (req, res) => {
+  const CoverImageLocalPath = req.file?.path;
+  if (!CoverImageLocalPath) {
+    throw new ApiError(401, "Local Fill Missing for Cover Image");
+  }
+  
+  console.log("file uploaded locally")
+  const coverImage = await UploadOnCloudinary(CoverImageLocalPath);
+  if (!coverImage) {
+    throw new ApiError(500, "CoverImage is not uploaded on Cloudinary");
+  }
+  
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        coverImage: coverImage.url,
+      },
+    },
+    {
+      new: true,
+    }
+  ).select("-password");
+
+  return res.status(200).json(new apiResponse(200, user, "CoverImage Updated Successfully"));
+});
+
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+  // we have extracted username form url
+  const { username } = req.params;
+  // console.log(username)
+
+  if (!username?.trim()) {
+    throw new ApiError(401, "Username is missing");
+  }
+
+  // now we are using aggregation pipeline , {} inside this we write pipelines
+  const channel = await User.aggregate([
+    {
+      $match: {
+        username: username?.toLowerCase(),
+      },
+    },
+    {
+      $lookup: {
+        // this function find ki mujhe kitno ne subscribe kr rkha hai
+        from: "subscribtions", // here we take modelname - Subscribtion, but in db it becomes this - subscribtions
+        localField: "_id",
+        foreignField: "Channel",
+        as: "Subscribers",
+      },
+    },
+    {
+      $lookup: {
+        // and  this function find ki mene kitno ne subscribe kr rkha hai
+        from: "subscribtions",
+        localField: "_id",
+        foreignField: "Subscriber",
+        as: "SubscribedTo",
+      },
+    },
+    {
+      $addFields: {
+        subscribersCount: {
+          $size: "$Subscribers",
+        },
+        channelSubscribedToCount: {
+          $size: "$SubscribedTo",
+        },
+        issubscribed: {
+          $cond: {
+            if: { $in: [req.user?._id, "$Subscribers.Subscriber"] },
+            then: true,
+            else: false,
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        username: 1,
+        FullName: 1,
+        avatar: 1,
+        coverImage: 1,
+        subscribersCount: 1,
+        channelSubscribedToCount: 1,
+        issubscribed: 1,
+        email: 1,
+      },
+    },
+  ]);
+  
+  if (!channel?.length) {
+    throw new ApiError(404, "Channel does not exists")
+  }
+
+  return res
+    .status(200)
+    .json(new apiResponse(200, channel[0], "channel Fetched Successfully"));
+});
+
+const getwatchHistory = asyncHandler(async (req, res) => {
+  const user = await User.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(req.user?._id)
+      },
+    },
+    {
+      $lookup: {
+        from: "videos",
+        localField: "watchHistory",
+        foreignField: "_id",
+        as: "watchHistory",
+        pipeline: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "owner",
+              foreignField: "_id",
+              as: "owner",
+              pipeline: [
+                {
+                  $project: {
+                    FullName: 1,
+                    username: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              owner: {
+                $first: "$owner",
+              },
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  console.log(user[0].watchHistory)
+  return res
+    .status(200)
+    .json(
+      new apiResponse(
+        200,
+        user[0].watchHistory,
+        "wartch Histor fetched successfully"
+      )
+    );
+});
+
+export {
+  registerUser,
+  loginUser,
+  LogOutUser,
+  RefreshAccessToken,
+  ChangeCurrentPassword,
+  getCurrentUser,
+  updateCurrentUserDetails,
+  updateCurrentUserCoverImage,
+  updateCurrentUserAvatar,
+  getUserChannelProfile,
+  getwatchHistory,
+};

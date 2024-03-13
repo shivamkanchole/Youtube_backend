@@ -1,8 +1,11 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import multer from "multer";
+const upload = multer();
 
 const app = express();
+app.use(upload.array());
 
 app.use(
   cors({
@@ -10,9 +13,6 @@ app.use(
     credentials: true,
   })
 );
-
-// app.use(express.json())
-// app.use(express.urlencoded())
 
 app.use(
   express.json({
@@ -40,13 +40,16 @@ app.use(cookieParser()); // so that we can do CRUD operations over cookies, also
 
 // router imports
 import userRouter from "./routes/user.route.js";
+import videoRouter from "./routes/video.route.js";
+import playlistRouter from "./routes/playlist.route.js";
 
 // route declaration
-
 app.use("/api/v1/users", userRouter);
+app.use("/api/v1/videos", videoRouter);
+app.use("/api/v1/playlist", playlistRouter);
 
-app.get('/',(req,res)=>{
-  res.send("Good to go...")
-})
+app.get("/", (req, res) => {
+  res.send("Good to go...");
+});
 
 export { app };
